@@ -18,7 +18,6 @@ const (
 	TileStairs = '>'
 
 	PlayerChar  = '@'
-	MonsterChar = 'M'
 	ChestChar   = 'C'
 )
 
@@ -28,31 +27,13 @@ type Room struct {
 	X, Y, W, H int
 }
 
-type Player struct {
-	X, Y int
-	HP   int
-	MaxHP int
-	Atk  int
-}
-
-type Monster struct {
-	X, Y int
-	HP   int
-	Atk  int
-	Alive bool
-}
-
-type Chest struct {
-	X, Y int
-	Opened bool
-}
-
 type Game struct {
 	Map     [][]Tile
 	Rooms   []Room
 	Player  Player
 	Monsters []Monster
 	Chests   []Chest
+	Potions  []Potion
 	StairsX, StairsY int
 	Floor    int
 	Log      []string
@@ -65,7 +46,7 @@ func NewGame() *Game {
 		GameOver: false,
 		Log:      make([]string, 0, 10),
 	}
-	g.Player = Player{HP: 100, MaxHP: 100, Atk: 10}
+	g.Player = NewPlayer()
 	g.GenerateFloor()
 	return g
 }
@@ -82,6 +63,7 @@ func (g *Game) GenerateFloor() {
 	g.Rooms = nil
 	g.Monsters = nil
 	g.Chests = nil
+	g.Potions = nil
 	g.Log = g.Log[:0]
 	g.addLog(fmt.Sprintf("=== 第 %d 层 ===", g.Floor))
 
@@ -139,14 +121,7 @@ func (g *Game) GenerateFloor() {
 			if mx == g.StairsX && my == g.StairsY {
 				continue
 			}
-			baseHP := 20 + g.Floor*10
-			baseAtk := 5 + g.Floor*2
-			g.Monsters = append(g.Monsters, Monster{
-				X: mx, Y: my,
-				HP: baseHP + rand.Intn(10),
-				Atk: baseAtk + rand.Intn(3),
-				Alive: true,
-			})
+			g.Monsters = append(g.Monsters, NewMonster(mx, my, g.Floor))
 		}
 		if rand.Intn(3) == 0 {
 			cx := r.X + rand.Intn(r.W)
@@ -211,6 +186,15 @@ func (g *Game) chestAt(x, y int) *Chest {
 	return nil
 }
 
+func (g *Game) potionAt(x, y int) int {
+	for i := range g.Potions {
+		if g.Potions[i].X == x && g.Potions[i].Y == y {
+			return i
+		}
+	}
+	return -1
+}
+
 func (g *Game) addLog(msg string) {
 	g.Log = append(g.Log, msg)
 	if len(g.Log) > 8 {
@@ -229,10 +213,14 @@ func (g *Game) MovePlayer(dx, dy int) {
 	if m != nil {
 		dmg := g.Player.Atk + rand.Intn(5)
 		m.HP -= dmg
-		g.addLog(fmt.Sprintf("你攻击怪物造成 %d 伤害", dmg))
+		g.addLog(fmt.Sprintf("你攻击%s造成 %d 伤害", m.Name(), dmg))
 		if m.HP <= 0 {
 			m.Alive = false
-			g.addLog("怪物被消灭了！")
+			g.addLog(fmt.Sprintf("%s被消灭了！", m.Name()))
+			if m.ShouldDrop() {
+				g.Potions = append(g.Potions, Potion{X: m.X, Y: m.Y})
+				g.addLog("怪物掉落了一瓶药水！")
+			}
 		}
 		g.monstersTurn()
 		return
@@ -264,6 +252,13 @@ func (g *Game) MovePlayer(dx, dy int) {
 	g.Player.X = nx
 	g.Player.Y = ny
 
+	pi := g.potionAt(nx, ny)
+	if pi >= 0 {
+		g.Player.Potions++
+		g.Potions = append(g.Potions[:pi], g.Potions[pi+1:]...)
+		g.addLog(fmt.Sprintf("捡到药水！当前 %d 瓶", g.Player.Potions))
+	}
+
 	if nx == g.StairsX && ny == g.StairsY {
 		g.Floor++
 		g.addLog("进入下一层...")
@@ -271,6 +266,15 @@ func (g *Game) MovePlayer(dx, dy int) {
 		return
 	}
 
+	g.monstersTurn()
+}
+
+func (g *Game) UsePotion() {
+	if g.GameOver {
+		return
+	}
+	_, msg := g.Player.DrinkPotion()
+	g.addLog(msg)
 	g.monstersTurn()
 }
 
@@ -285,7 +289,7 @@ func (g *Game) monstersTurn() {
 		if absX+absY == 1 {
 			dmg := m.Atk + rand.Intn(3)
 			g.Player.HP -= dmg
-			g.addLog(fmt.Sprintf("怪物攻击你造成 %d 伤害", dmg))
+			g.addLog(fmt.Sprintf("%s攻击你造成 %d 伤害", m.Name(), dmg))
 			if g.Player.HP <= 0 {
 				g.Player.HP = 0
 				g.GameOver = true
@@ -314,7 +318,7 @@ func (g *Game) monstersTurn() {
 		nx := m.X + dx
 		ny := m.Y + dy
 		if g.isWalkable(nx, ny) && g.monsterAt(nx, ny) == nil &&
-			!(nx == g.Player.X && ny == g.Player.Y) {
+			!(nx == g.Player.X && ny == g.Player.Y) && g.potionAt(nx, ny) < 0 {
 			m.X = nx
 			m.Y = ny
 		}
@@ -341,10 +345,12 @@ func (g *Game) Render() {
 
 			if g.Player.X == x && g.Player.Y == y {
 				ch = PlayerChar
-			} else if g.monsterAt(x, y) != nil {
-				ch = MonsterChar
+			} else if m := g.monsterAt(x, y); m != nil {
+				ch = m.Char()
 			} else if g.chestAt(x, y) != nil {
 				ch = ChestChar
+			} else if g.potionAt(x, y) >= 0 {
+				ch = PotionChar
 			}
 			line += string(ch)
 		}
@@ -358,7 +364,6 @@ func (g *Game) Render() {
 		fmt.Println(line)
 	}
 
-	logAreaStart := MapHeight
 	logAreaHeight := 10
 	for i := 0; i < logAreaHeight; i++ {
 		line := "| "
@@ -366,7 +371,6 @@ func (g *Game) Render() {
 			line += " "
 		}
 		line += " | "
-		y := logAreaStart + i
 		if i < len(g.Log) {
 			msg := g.Log[len(g.Log)-1-i]
 			if len(msg) > SideBarWidth {
@@ -378,13 +382,11 @@ func (g *Game) Render() {
 			line += " "
 		}
 		line += "|"
-		if y < logAreaStart+logAreaHeight {
-			fmt.Println(line)
-		}
+		fmt.Println(line)
 	}
 
 	fmt.Println("+" + repeat("-", totalWidth-2) + "+")
-	fmt.Println("  移动: WASD | 退出: Q | 重开: R")
+	fmt.Println("  移动: WASD | 喝药: P | 退出: Q | 重开: R")
 }
 
 func (g *Game) sidebarLine(y int) string {
@@ -411,21 +413,21 @@ func (g *Game) sidebarLine(y int) string {
 	case 4:
 		return fmt.Sprintf("攻击力: %d", g.Player.Atk)
 	case 5:
-		return ""
+		return fmt.Sprintf("药水: %d 瓶 (P键使用)", g.Player.Potions)
 	case 6:
-		return "== 图例 =="
+		return ""
 	case 7:
-		return fmt.Sprintf("%c 你", PlayerChar)
+		return "== 图例 =="
 	case 8:
-		return fmt.Sprintf("%c 怪物", MonsterChar)
+		return fmt.Sprintf("%c 你", PlayerChar)
 	case 9:
-		return fmt.Sprintf("%c 宝箱", ChestChar)
+		return fmt.Sprintf("%c 哥布林  %c 骷髅", GoblinChar, SkeletonChar)
 	case 10:
-		return fmt.Sprintf("%c 楼梯", TileStairs)
+		return fmt.Sprintf("%c 小龙    %c 宝箱", DragonChar, ChestChar)
 	case 11:
-		return fmt.Sprintf("%c 墙", TileWall)
+		return fmt.Sprintf("%c 药水    %c 楼梯", PotionChar, TileStairs)
 	case 12:
-		return fmt.Sprintf("%c 地板", TileFloor)
+		return fmt.Sprintf("%c 墙      %c 地板", TileWall, TileFloor)
 	case 24:
 		if g.GameOver {
 			return "*** 游戏结束 ***"
@@ -487,6 +489,8 @@ func main() {
 			g.MovePlayer(-1, 0)
 		case 'D':
 			g.MovePlayer(1, 0)
+		case 'P':
+			g.UsePotion()
 		case 'Q':
 			return
 		case 'R':
