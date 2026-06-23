@@ -48,18 +48,24 @@ func (r *Renderer) Render() {
 	}
 
 	logAreaHeight := 10
+	logCopy := make([]string, len(g.Log))
+	copy(logCopy, g.Log)
 	for i := 0; i < logAreaHeight; i++ {
 		line := "| "
 		for x := 0; x < MapWidth; x++ {
 			line += " "
 		}
 		line += " | "
-		if i < len(g.Log) {
-			msg := g.Log[len(g.Log)-1-i]
-			if len(msg) > SideBarWidth {
-				msg = msg[:SideBarWidth]
+		logLen := len(logCopy)
+		if logLen > 0 && i < logLen {
+			idx := logLen - 1 - i
+			if idx >= 0 && idx < logLen {
+				msg := logCopy[idx]
+				if len(msg) > SideBarWidth {
+					msg = msg[:SideBarWidth]
+				}
+				line += msg
 			}
-			line += msg
 		}
 		for len(line) < totalWidth-1 {
 			line += " "

@@ -27,7 +27,7 @@ func (mg *MapGenerator) GenerateFloor() {
 	g.Monsters = nil
 	g.Chests = nil
 	g.Potions = nil
-	g.Log = g.Log[:0]
+	g.ClearLog()
 	g.AddLog(fmt.Sprintf("=== 第 %d 层 ===", g.Floor))
 
 	numRooms := 6 + rand.Intn(5)
@@ -75,13 +75,33 @@ func (mg *MapGenerator) GenerateFloor() {
 	g.StairsY = last.Y + last.H/2
 	g.Map[g.StairsY][g.StairsX] = TileStairs
 
+	const minPlayerDist = 5
 	for i := 1; i < len(g.Rooms); i++ {
 		r := g.Rooms[i]
 		numMonsters := 1 + rand.Intn(2)
 		for j := 0; j < numMonsters; j++ {
-			mx := r.X + rand.Intn(r.W)
-			my := r.Y + rand.Intn(r.H)
-			if mx == g.StairsX && my == g.StairsY {
+			var mx, my int
+			placed := false
+			for tries := 0; tries < 20; tries++ {
+				mx = r.X + rand.Intn(r.W)
+				my = r.Y + rand.Intn(r.H)
+				if mx == g.StairsX && my == g.StairsY {
+					continue
+				}
+				dx := mx - g.Player.X
+				dy := my - g.Player.Y
+				if dx < 0 {
+					dx = -dx
+				}
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx+dy >= minPlayerDist {
+					placed = true
+					break
+				}
+			}
+			if !placed {
 				continue
 			}
 			g.Monsters = append(g.Monsters, NewMonster(mx, my, g.Floor))

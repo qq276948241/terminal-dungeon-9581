@@ -38,8 +38,14 @@ func NewGame() *Game {
 func (g *Game) AddLog(msg string) {
 	g.Log = append(g.Log, msg)
 	if len(g.Log) > 8 {
-		g.Log = g.Log[len(g.Log)-8:]
+		trimmed := make([]string, 8)
+		copy(trimmed, g.Log[len(g.Log)-8:])
+		g.Log = trimmed
 	}
+}
+
+func (g *Game) ClearLog() {
+	g.Log = make([]string, 0, 10)
 }
 
 func (g *Game) MovePlayer(dx, dy int) {
