@@ -6,11 +6,26 @@ import (
 )
 
 const (
+	MapWidth  = 50
+	MapHeight = 25
+	SideBarWidth = 25
+
+	TileWall   = '#'
+	TileFloor  = '.'
+	TileStairs = '>'
+
+	PlayerChar  = '@'
+	ChestChar   = 'C'
 	GoblinChar  = 'G'
 	SkeletonChar = 'S'
 	DragonChar  = 'D'
 	PotionChar  = '!'
 )
+
+type Tile byte
+type Room struct {
+	X, Y, W, H int
+}
 
 type MonsterType int
 
@@ -21,10 +36,10 @@ const (
 )
 
 type MonsterTypeInfo struct {
-	Char    byte
-	Name    string
-	BaseHP  int
-	BaseAtk int
+	Char     byte
+	Name     string
+	BaseHP   int
+	BaseAtk  int
 	DropRate float64
 }
 
@@ -49,6 +64,14 @@ type Chest struct {
 
 type Potion struct {
 	X, Y int
+}
+
+type Player struct {
+	X, Y int
+	HP    int
+	MaxHP int
+	Atk   int
+	Potions int
 }
 
 func (m *Monster) Char() byte {
@@ -102,14 +125,6 @@ func (m *Monster) ShouldDrop() bool {
 
 func NewPlayer() Player {
 	return Player{HP: 100, MaxHP: 100, Atk: 10}
-}
-
-type Player struct {
-	X, Y int
-	HP    int
-	MaxHP int
-	Atk   int
-	Potions int
 }
 
 func (p *Player) DrinkPotion() (int, string) {
